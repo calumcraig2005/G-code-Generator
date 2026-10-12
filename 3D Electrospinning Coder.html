@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Electrospinning Coder</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel-2: #1c232d;
+    --line: #2a3441;
+    --ink: #e6edf3;
+    --ink-dim: #8b97a6;
+    --accent: #4dd6c1;
+    --accent-dim: #2a8478;
+    --warn: #e3a857;
+    --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', Menlo, Consolas, monospace;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  :root.light {
+    --bg: #f5f7fa;
+    --panel: #ffffff;
+    --panel-2: #eef1f5;
+    --line: #d0d7e2;
+    --ink: #1a2233;
+    --ink-dim: #5a6880;
+    --accent: #1a9e8f;
+    --accent-dim: #2ab8a6;
+    --warn: #c47d10;
+  }
+  /* Boxed cluster of visual-only controls (bottom right) */
+  #visual-controls {
+    position: fixed; bottom: 14px; left: 14px; z-index: 100;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 8px 10px 10px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    display: flex; flex-direction: column; gap: 8px; align-items: stretch;
+  }
+  :root:not(.light) #visual-controls {
+    background: #1b222c; border-color: #38434f;
+  }
+  #visual-controls-label {
+    font-family: var(--sans); font-size: 10px; font-weight: 600;
+    letter-spacing: 0.4px; text-transform: uppercase;
+    color: var(--accent); text-align: center; pointer-events: none;
+    padding-bottom: 2px; border-bottom: 1px solid var(--line);
+  }
+  #visual-controls-row { display: flex; gap: 8px; align-items: center; }
+  .vpill {
+    background: var(--panel-2); border: 1px solid var(--line);
+    color: var(--ink); border-radius: 20px; padding: 6px 12px;
+    font-size: 12px; cursor: pointer; font-family: var(--sans);
+    transition: all 0.15s; display: flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+  }
+  :root:not(.light) .vpill { background: #232c38; border-color: #3a4756; color: #e6edf3; }
+  .vpill:hover { border-color: var(--accent); }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    display: grid;
+    grid-template-columns: 340px 1fr 380px;
+    grid-template-rows: 100%;
+    height: 100vh;
+    overflow: hidden;
+  }
+  @media (max-width: 1100px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto 320px auto; height: auto; overflow: auto; }
+  }
+
+  .panel { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; height: 100vh; }
+  .panel.right { border-right: none; border-left: 1px solid var(--line); }
+  @media (max-width: 1100px) { .panel { height: auto; } }
+
+  .brand {
+    padding: 20px 22px 16px;
+    border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; background: var(--panel); z-index: 5;
+  }
+  .brand h1 {
+    font-size: 15px; font-weight: 700; letter-spacing: 0.5px;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .brand h1 .mark { color: var(--accent); font-family: var(--mono); font-weight: 400; }
+  .brand p { font-size: 11px; color: var(--ink-dim); margin-top: 4px; letter-spacing: 0.3px; }
+
+  .group { padding: 18px 22px; border-bottom: 1px solid var(--line); }
+  .group h2 {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1.4px;
+    color: var(--ink-dim); font-weight: 600; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .group h2::before { content: ''; width: 5px; height: 5px; background: var(--accent); border-radius: 50%; }
+
+  .field { margin-bottom: 13px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label {
+    display: block; font-size: 12px; color: var(--ink-dim);
+    margin-bottom: 5px; font-weight: 500;
+  }
+  .field label .unit { color: var(--accent-dim); font-family: var(--mono); font-size: 11px; }
+  .field input, .field select {
+    width: 100%; background: var(--bg); border: 1px solid var(--line);
+    color: var(--ink); padding: 8px 10px; border-radius: 6px;
+    font-family: var(--mono); font-size: 13px; outline: none; transition: border-color 0.15s;
+  }
+  .field input:focus, .field select:focus { border-color: var(--accent-dim); }
+  .field select { cursor: pointer; }
+
+  .seg { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button {
+    flex: 1; background: var(--bg); border: none; color: var(--ink-dim);
+    padding: 8px 4px; font-size: 11px; cursor: pointer; font-family: var(--sans);
+    font-weight: 500; transition: all 0.15s; border-right: 1px solid var(--line);
+  }
+  .seg button:last-child { border-right: none; }
+  .seg button.on { background: var(--accent-dim); color: #04120f; font-weight: 600; }
+
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .readout {
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 16px; margin-top: 4px;
+  }
+  .readout .line {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 5px 0; font-size: 12px;
+  }
+  .readout .line .k { color: var(--ink-dim); }
+  .readout .line .v { font-family: var(--mono); color: var(--ink); font-weight: 500; }
+  .readout .line .v.hl { color: var(--accent); }
+  .readout .sep { height: 1px; background: var(--line); margin: 8px 0; }
+
+  #stage { position: relative; height: 100vh; background:
+    radial-gradient(circle at 50% 40%, #141b24 0%, #0e1116 70%); }
+  :root.light #stage { background: radial-gradient(circle at 50% 40%, #e8ecf2 0%, #f5f7fa 70%); }
+  @media (max-width: 1100px) { #stage { height: 320px; } }
+  #canvas-host { width: 100%; height: 100%; }
+  .stage-tag {
+    position: absolute; top: 16px; left: 18px; font-family: var(--mono);
+    font-size: 11px; color: var(--ink-dim); letter-spacing: 0.5px;
+    pointer-events: none; line-height: 1.6;
+  }
+  .stage-tag b { color: var(--accent); font-weight: 400; }
+  .stage-hint {
+    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+    font-size: 10px; color: var(--ink-dim); opacity: 0.7; pointer-events: none;
+    white-space: nowrap;
+  }
+  .legend {
+    position: absolute; bottom: 16px; right: 18px; font-size: 10px;
+    color: var(--ink-dim); line-height: 1.8; pointer-events: none; text-align: right;
+  }
+  .legend .sw { display: inline-block; width: 18px; height: 2px; vertical-align: middle; margin-left: 6px; }
+
+  .gcode-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .gcode-head h2 { margin: 0; }
+  .gcode-box {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px; font-family: var(--mono); font-size: 10.5px; line-height: 1.55;
+    color: var(--ink-dim); white-space: pre; overflow: auto; max-height: 340px;
+    margin-bottom: 14px;
+  }
+  .gcode-box .cmt { color: #5a6675; }
+  .btn {
+    width: 100%; padding: 12px; border-radius: 8px; border: none; cursor: pointer;
+    font-family: var(--sans); font-size: 13px; font-weight: 600; transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn.primary { background: var(--accent); color: #04120f; }
+  .btn.primary:hover { background: #5fe0cc; }
+  .btn.ghost { background: transparent; color: var(--ink-dim); border: 1px solid var(--line); margin-top: 8px; }
+  .btn.ghost:hover { border-color: var(--accent-dim); color: var(--ink); }
+
+  .note {
+    font-size: 11px; color: var(--ink-dim); line-height: 1.5; margin-top: 12px;
+    padding: 10px 12px; background: var(--panel-2); border-radius: 6px; border-left: 2px solid var(--warn);
+  }
+  .formula {
+    font-family: var(--mono); font-size: 10.5px; color: var(--accent-dim);
+    margin-top: 6px; word-break: break-word;
+  }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a4654; }
+</style>
+</head>
+<body>
+<div id="visual-controls">
+  <div id="visual-controls-label">Visual UI only — does not affect G-code</div>
+  <div id="visual-controls-row">
+    <label id="thickness-toggle" class="vpill" title="Preview thickness">
+      ✎ Thickness
+      <input type="range" id="previewThickness" min="0.15" max="1.1" step="0.05" value="0.55" oninput="regenerate()" style="width:74px;cursor:pointer;">
+    </label>
+    <label id="colour-toggle" class="vpill" title="Path colour">
+      ✦ Colour
+      <input type="color" id="pathColourPicker" value="#4dd6c1" oninput="regenerate()" style="width:20px;height:20px;border:none;background:none;cursor:pointer;padding:0;">
+    </label>
+    <button id="theme-toggle" class="vpill" onclick="
+      const isLight = document.documentElement.classList.toggle('light');
+      this.textContent = isLight ? '☾ Dark' : '☀ Light';
+      setGridTheme(isLight);
+      regenerate();
+    ">☀ Light</button>
+  </div>
+</div>
+
+<!-- LEFT: SHAPE -->
+<div class="panel left">
+  <div class="brand">
+    <h1>3D Electrospinning <span class="mark">Coder</span></h1>
+    <p>Toolpath &amp; G-code generator for electrospinning</p>
+  </div>
+
+  <div class="group">
+    <h2>Pattern</h2>
+    <div class="field">
+      <div class="seg" id="shapeSeg">
+        <button data-shape="circle" class="on">Circle</button>
+        <button data-shape="annulus">Annulus</button>
+        <button data-shape="square">Square</button>
+      </div>
+    </div>
+    <div class="field">
+      <div class="seg" id="shapeSeg2">
+        <button data-shape="polygon">Polygon</button>
+        <button data-shape="spiral">Spiral</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="group" id="shapeParams">
+    <h2>Dimensions</h2>
+    <!-- dynamically filled -->
+  </div>
+
+  <div class="group">
+    <h2>Height &amp; Working Distance</h2>
+    <div class="field">
+      <label>Start working distance <span class="unit">Z mm</span></label>
+      <input type="number" id="zStart" value="50" step="1">
+    </div>
+    <div class="field">
+      <label>Z increment behaviour</label>
+      <select id="zMode">
+        <option value="fixed">Fixed (no drop)</option>
+        <option value="step">Step drop — by time</option>
+        <option value="steploops">Step drop — by rotations</option>
+      </select>
+    </div>
+    <div class="field" id="runMinField">
+      <label>Run duration <span class="unit">min</span></label>
+      <input type="number" id="runMin" value="10" step="1">
+    </div>
+    <div id="zStepParams">
+      <div class="row2">
+        <div class="field">
+          <label>Drop per step <span class="unit">mm</span></label>
+          <input type="number" id="zStep" value="5" step="1">
+        </div>
+        <div class="field">
+          <label>Number of drops</label>
+          <input type="number" id="zCount" value="5" step="1">
+        </div>
+      </div>
+      <div class="field" id="intervalTimeField">
+        <label>Interval between drops <span class="unit">min</span></label>
+        <input type="number" id="zInterval" value="2" step="0.5">
+      </div>
+      <div class="field" id="intervalLoopField" style="display:none;">
+        <label>Rotations between drops <span class="unit">loops</span></label>
+        <input type="number" id="zLoopInterval" value="5" step="1" min="1">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CENTER: PREVIEW -->
+<div id="stage">
+  <div id="canvas-host"></div>
+  <div class="stage-tag" id="stageTag"></div>
+  <div class="legend">
+    nozzle path <span class="sw" style="background:#4dd6c1"></span><br>
+    z-drops <span class="sw" style="background:#e3a857"></span>
+  </div>
+  <div class="stage-hint">drag to orbit · right-drag or shift-drag to pan · scroll to zoom</div>
+</div>
+
+<!-- RIGHT: PROCESS + OUTPUT -->
+<div class="panel right">
+  <div class="brand">
+    <h1 style="font-size:13px;">Process <span class="mark">parameters</span></h1>
+  </div>
+
+  <div class="group">
+    <h2>Syringe &amp; Flow</h2>
+    <div class="row2">
+      <div class="field">
+        <label>Syringe Ø <span class="unit">mm</span></label>
+        <input type="number" id="synD" value="12.45" step="0.1">
+      </div>
+      <div class="field">
+        <label>Flow rate <span class="unit">mL/h</span></label>
+        <input type="number" id="flow" value="5" step="0.1">
+      </div>
+    </div>
+    <div class="field">
+      <label>Nozzle speed <span class="unit">mm/s</span></label>
+      <input type="number" id="speed" value="12" step="1">
+    </div>
+  </div>
+
+  <div class="group">
+    <div id="zWarn" style="display:none;background:#5c1a1a;color:#ffaaaa;border:1px solid #ff4444;border-radius:6px;padding:10px 12px;font-size:0.85rem;line-height:1.4;margin-bottom:8px;"></div>
+    <h2>Computed</h2>
+    <div class="readout" id="readout"></div>
+    <div class="formula" id="formula"></div>
+  </div>
+
+  <div class="group">
+    <div class="gcode-head"><h2>G-code preview</h2></div>
+    <div class="gcode-box" id="gcodeBox"></div>
+    <button class="btn primary" id="dlBtn">Download .gcode</button>
+    <button class="btn ghost" id="copyBtn">Copy to clipboard</button>
+    <div class="note" id="flowNote"></div>
+  </div>
+</div>
+
+<script>
+// ---------- State ----------
+const state = {
+  shape: 'circle',
+  // shape params (mm)
+  circleD: 55,
+  annOuter: 70, annInner: 50, annLines: 2,
+  squareSide: 55,
+  polySides: 6, polyD: 60,
+  spiralOuter: 60, spiralInner: 10, spiralTurns: 6,
+  // z
+  zStart: 50, zMode: 'fixed', zStep: 5, zCount: 5, zInterval: 2, zLoopInterval: 5, runMin: 10,
+  // process
+  synD: 12.45, flow: 5, speed: 12,
+  // bed centre
+  cx: 125, cy: 125
+};
+
+// ---------- Shape parameter UI ----------
+const shapeParamDefs = {
+  circle: [{k:'circleD', l:'Diameter', u:'mm'}],
+  annulus: [{k:'annOuter', l:'Outer Ø', u:'mm'},{k:'annInner', l:'Inner Ø', u:'mm'},{k:'annLines', l:'Wall lines', u:''}],
+  square: [{k:'squareSide', l:'Side length', u:'mm'}],
+  polygon: [{k:'polySides', l:'Sides', u:''},{k:'polyD', l:'Diameter', u:'mm'}],
+  spiral: [{k:'spiralOuter', l:'Outer Ø', u:'mm'},{k:'spiralInner', l:'Inner Ø', u:'mm'},{k:'spiralTurns', l:'Turns', u:''}]
+};
+
+function renderShapeParams() {
+  const host = document.getElementById('shapeParams');
+  const defs = shapeParamDefs[state.shape];
+  let html = '<h2>Dimensions</h2>';
+  if (defs.length === 2) html += '<div class="row2">';
+  defs.forEach((d, i) => {
+    if (defs.length > 2 && i === 0) {} // keep simple stacked for 3
+    html += `<div class="field">
+      <label>${d.l} ${d.u?`<span class="unit">${d.u}</span>`:''}</label>
+      <input type="number" id="sp_${d.k}" value="${state[d.k]}" step="${d.k.includes('Sides')||d.k.includes('Turns')?1:0.1}">
+    </div>`;
+    if (defs.length === 2 && i === 1) html += '</div>';
+  });
+  host.innerHTML = html;
+  defs.forEach(d => {
+    document.getElementById('sp_'+d.k).addEventListener('input', e => {
+      state[d.k] = parseFloat(e.target.value) || 0;
+      regenerate();
+    });
+  });
+}
+
+// ---------- Path generation (returns array of {x,y} in mm, centred at cx,cy) ----------
+function buildPath() {
+  const pts = [];
+  const cx = state.cx, cy = state.cy;
+  const seg = 96; // segments per loop for smooth circles
+  if (state.shape === 'circle') {
+    const r = state.circleD/2;
+    for (let i=0;i<=seg;i++){const a=i/seg*2*Math.PI;pts.push({x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)});}
+  } else if (state.shape === 'annulus') {
+    // trace N concentric circles spanning inner→outer wall, so the
+    // electrospun wall has real thickness (not just a single mid-line)
+    const rIn = state.annInner/2, rOut = state.annOuter/2;
+    const n = Math.max(1, Math.round(state.annLines));
+    for (let c=0; c<n; c++){
+      // distribute radii evenly across the wall; if 1 line, use midpoint
+      const r = n===1 ? (rIn+rOut)/2 : rIn + (rOut-rIn)*(c/(n-1));
+      for (let i=0;i<=seg;i++){
+        const a=i/seg*2*Math.PI;
+        pts.push({x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)});
+      }
+    }
+  } else if (state.shape === 'square') {
+    const s = state.squareSide/2;
+    pts.push({x:cx-s,y:cy-s},{x:cx+s,y:cy-s},{x:cx+s,y:cy+s},{x:cx-s,y:cy+s},{x:cx-s,y:cy-s});
+  } else if (state.shape === 'polygon') {
+    const n = Math.max(3, Math.round(state.polySides)); const r = state.polyD/2;
+    for (let i=0;i<=n;i++){const a=i/n*2*Math.PI - Math.PI/2;pts.push({x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)});}
+  } else if (state.shape === 'spiral') {
+    const ro=state.spiralOuter/2, ri=state.spiralInner/2, turns=Math.max(1,state.spiralTurns);
+    const steps = seg*turns;
+    for (let i=0;i<=steps;i++){
+      const t=i/steps; const r=ro+(ri-ro)*t; const a=t*turns*2*Math.PI;
+      pts.push({x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)});
+    }
+  }
+  return pts;
+}
+
+// path length of one loop (mm)
+function pathLength(pts){let L=0;for(let i=1;i<pts.length;i++){L+=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);}return L;}
+
+// ---------- E-value (thesis formula) ----------
+// f = (pi * rs^2 * E / t) * 3600 * 1e-3   => E = f*t / (pi*rs^2*3600*1e-3)
+// per-segment E uses t for that segment's travel
+function computeEperMM(){
+  const rs = state.synD/2;
+  const f = state.flow;
+  const Fmm_min = state.speed*60;
+  const t_per_mm = 60 / Fmm_min; // seconds per mm
+  const E_per_mm = (f * t_per_mm) / (Math.PI * rs*rs * 3600 * 1e-3);
+  return E_per_mm;
+}
+
+// ---------- Loop timing ----------
+function loopTimeSec(pts){ return pathLength(pts) / state.speed; }
+
+// ---------- G-code build ----------
+function buildGcode(){
+  const pts = buildPath();
+  const E_per_mm = computeEperMM();
+  const F = Math.round(state.speed*60);
+  const loopT = loopTimeSec(pts);
+  // loopsPerStep = how many full rotations between each drop.
+  // Time mode: derive from minutes. Rotations mode: use the value directly.
+  const loopsPerStep = state.zMode==='steploops'
+      ? Math.max(1, Math.round(state.zLoopInterval))
+      : Math.max(1, Math.round((state.zInterval*60)/loopT));
+  const isStepMode = (state.zMode==='step' || state.zMode==='steploops');
+  const totalLoops = isStepMode
+      ? loopsPerStep*(state.zCount+1)
+      : Math.ceil((state.runMin*60)/loopT); // run duration (min) for fixed
+
+  let g = [];
+  g.push('; Generated by 3D Electrospinning Coder');
+  g.push('; Shape: '+state.shape+'  |  Flow: '+state.flow+' mL/h  |  Speed: '+state.speed+' mm/s');
+  g.push('; Syringe Ø '+state.synD+' mm  |  E/mm = '+E_per_mm.toFixed(6));
+  g.push('G90');
+  g.push('M83');
+  g.push('M106 S0');
+  g.push('G28');
+  g.push('M117 Printing Fibres');
+  g.push('G1 Z2 F1000');
+  g.push('G1 Z'+state.zStart.toFixed(2)+' F1002');
+  g.push('T0');
+
+  let curZ = state.zStart;
+  // move to start
+  g.push('G1 X'+pts[0].x.toFixed(3)+' Y'+pts[0].y.toFixed(3)+' F1800');
+
+  let firstMove = true;
+  let dropsLeft = state.zCount;
+  for (let loop=0; loop<totalLoops; loop++){
+    if (isStepMode && loop>0 && loop%loopsPerStep===0 && dropsLeft>0){
+      const nextZ = curZ + state.zStep;
+      if(nextZ > 200){ dropsLeft=0; } // hard ceiling - never command above 200mm
+      else {
+        curZ = nextZ; dropsLeft--;
+        g.push('; drop platform '+state.zStep+' mm  -> Z'+curZ.toFixed(2));
+        g.push('G0 Z'+curZ.toFixed(2)+' F1000');
+      }
+    }
+    g.push('; loop '+(loop+1));
+    const loopPts = (state.shape === 'spiral' && loop % 2 === 1) ? pts.slice().reverse() : pts;
+    for (let i=1;i<loopPts.length;i++){
+      const d = Math.hypot(loopPts[i].x-loopPts[i-1].x, loopPts[i].y-loopPts[i-1].y);
+      const E = (E_per_mm*d).toFixed(5);
+      let line = 'G1 X'+loopPts[i].x.toFixed(3)+' Y'+loopPts[i].y.toFixed(3)+' Z'+curZ.toFixed(2)+' E'+E;
+      if (firstMove){ line += ' F'+F; firstMove=false; }
+      g.push(line);
+    }
+  }
+  g.push('M84');
+  return {text: g.join('\n'), meta: {E_per_mm, loopT, totalLoops, loopsPerStep, len: pathLength(pts)}};
+}
+
+// ---------- Readout ----------
+function updateReadout(meta){
+  const r = document.getElementById('readout');
+  const totalT = meta.loopT*meta.totalLoops;
+  const isStepMode = (state.zMode==='step' || state.zMode==='steploops');
+  const endZ = isStepMode ? state.zStart + state.zStep*state.zCount : state.zStart;
+
+  // Safety check
+  const warn = document.getElementById('zWarn');
+  if(isStepMode && endZ > 200){
+    const msg = '⚠️ WARNING: Final Z is '+endZ+' mm — exceeds 200 mm travel limit. Reduce drops or drop size.';
+    warn.textContent = msg;
+    warn.style.display = 'block';
+  } else {
+    warn.style.display = 'none';
+  }
+  r.innerHTML =
+    line('Path length / loop', meta.len.toFixed(1)+' mm') +
+    line('Time / loop', meta.loopT.toFixed(1)+' s') +
+    line('Total loops', meta.totalLoops) +
+    sep() +
+    line('E per mm', meta.E_per_mm.toFixed(6), true) +
+    line('Working distance', state.zStart+' mm → '+endZ+' mm (platform drops away)') +
+    (isStepMode? line('Drop every', meta.loopsPerStep+' loops'+(state.zMode==='step'?' (~'+state.zInterval+' min)':'')) : '') +
+    sep() +
+    line('Est. run time', fmtTime(totalT), true);
+  document.getElementById('formula').innerHTML =
+    'E = (f · t) / (π · rs² · 3600 · 10⁻³)<br>'+
+    'rs = '+(state.synD/2)+' mm · t = '+(60/(state.speed*60)).toFixed(4)+' s/mm';
+  // flow note
+  const note = document.getElementById('flowNote');
+  note.innerHTML = '';
+}
+function line(k,v,hl){return '<div class="line"><span class="k">'+k+'</span><span class="v'+(hl?' hl':'')+'">'+v+'</span></div>';}
+function sep(){return '<div class="sep"></div>';}
+function fmtTime(s){const m=Math.floor(s/60);const ss=Math.round(s%60);return m+'m '+ss+'s';}
+
+// ---------- G-code preview box ----------
+function updateGcodeBox(text){
+  const lines = text.split('\n');
+  const head = lines.slice(0, 16);
+  const tail = lines.slice(-6);
+  const shown = head.join('\n') + '\n; ... ('+(lines.length-22)+' more lines) ...\n' + tail.join('\n');
+  document.getElementById('gcodeBox').textContent = shown;
+}
+
+// ---------- Three.js preview ----------
+let renderer, scene, camera, pathLine, zLines, bedGrid, controls3d;
+let camAngle = {az: -0.9, el: 0.9, dist: 220};
+let camTarget = {x: 0, y: 20, z: 0};   // point the camera orbits around; panning moves this
+let dragging=false, panning=false, lastX=0, lastY=0;
+
+// Recolour the bed grid by writing straight into its vertex colours,
+// rather than tinting the material on top of the colours already baked
+// into the mesh (GridHelper bakes colour per-vertex, so tinting the
+// material compounds with that and crushes the lines toward black).
+function setGridTheme(isLight){
+  if(!bedGrid || !bedGrid.geometry) return;
+  const col = new THREE.Color(isLight ? 0xb0bac8 : 0x5a6b80);
+  const colorAttr = bedGrid.geometry.attributes.color;
+  for(let i=0;i<colorAttr.count;i++){
+    colorAttr.setXYZ(i, col.r, col.g, col.b);
+  }
+  colorAttr.needsUpdate = true;
+  bedGrid.material.color.setHex(0xffffff); // keep material neutral, vertex colours show as-is
+}
+
+function initThree(){
+  const host = document.getElementById('canvas-host');
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(45, host.clientWidth/host.clientHeight, 0.1, 2000);
+  renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+  renderer.setSize(host.clientWidth, host.clientHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  host.appendChild(renderer.domElement);
+
+  // bed grid
+  const grid = new THREE.GridHelper(250, 25, 0x5a6b80, 0x3a4656);
+  scene.add(grid); bedGrid = grid;
+  setGridTheme(document.documentElement.classList.contains('light'));
+
+  // axes accent at plate corner
+  const axes = new THREE.AxesHelper(20);
+  axes.position.set(-125,0,-125);
+  scene.add(axes);
+
+  updateCamera();
+  animate();
+
+  // interaction — left-drag orbits, right-drag / shift-drag / two-finger-drag pans, scroll zooms
+  const el = renderer.domElement;
+
+  el.addEventListener('mousedown', e=>{
+    // pan when right button, or when holding shift/ctrl/cmd with left
+    if(e.button===2 || e.shiftKey || e.ctrlKey || e.metaKey){ panning=true; }
+    else { dragging=true; }
+    lastX=e.clientX; lastY=e.clientY;
+    e.preventDefault();
+  });
+  el.addEventListener('contextmenu', e=>e.preventDefault()); // allow right-drag pan
+  window.addEventListener('mouseup', ()=>{dragging=false;panning=false;});
+  window.addEventListener('mousemove', e=>{
+    const dx=e.clientX-lastX, dy=e.clientY-lastY;
+    if(dragging){
+      camAngle.az -= dx*0.008;
+      camAngle.el = Math.max(0.05, Math.min(1.55, camAngle.el+dy*0.008));
+      lastX=e.clientX; lastY=e.clientY; updateCamera();
+    } else if(panning){
+      panCamera(dx, dy);
+      lastX=e.clientX; lastY=e.clientY; updateCamera();
+    }
+  });
+
+  // Wheel: plain scroll zooms; two-finger trackpad pan (which the OS may send as
+  // wheel with ctrlKey, or as shift+wheel) pans horizontally/vertically.
+  el.addEventListener('wheel', e=>{
+    e.preventDefault();
+    if(e.ctrlKey){
+      // pinch-zoom gesture on trackpads arrives as ctrl+wheel
+      camAngle.dist = Math.max(60, Math.min(600, camAngle.dist + e.deltaY*0.5));
+    } else if(e.shiftKey){
+      panCamera(-e.deltaX-e.deltaY, 0);
+    } else {
+      camAngle.dist = Math.max(60, Math.min(600, camAngle.dist + e.deltaY*0.3));
+    }
+    updateCamera();
+  }, {passive:false});
+
+  window.addEventListener('resize', ()=>{
+    renderer.setSize(host.clientWidth, host.clientHeight);
+    camera.aspect = host.clientWidth/host.clientHeight; camera.updateProjectionMatrix();
+  });
+}
+
+function updateCamera(){
+  const {az,el,dist}=camAngle;
+  camera.position.set(
+    camTarget.x + dist*Math.cos(el)*Math.cos(az),
+    camTarget.y + dist*Math.sin(el),
+    camTarget.z + dist*Math.cos(el)*Math.sin(az)
+  );
+  camera.lookAt(camTarget.x, camTarget.y, camTarget.z);
+}
+
+// Pan the orbit target across the screen plane (screen dx/dy in pixels).
+function panCamera(dx, dy){
+  const {az,el,dist}=camAngle;
+  const panScale = dist * 0.0018; // pan speed scales with zoom level
+  // camera right vector (perpendicular to view direction, on the horizontal plane)
+  const rightX = -Math.sin(az), rightZ = Math.cos(az);
+  // camera "up on screen" projected onto world — approximate with forward-horizontal
+  const fwdX = Math.cos(az), fwdZ = Math.sin(az);
+  camTarget.x -= dx*panScale*rightX;
+  camTarget.z -= dx*panScale*rightZ;
+  // vertical drag moves target along world forward (feels like sliding across the bed)
+  camTarget.x += dy*panScale*fwdX;
+  camTarget.z += dy*panScale*fwdZ;
+}
+
+function animate(){ requestAnimationFrame(animate); renderer.render(scene, camera); }
+
+// build 3D representation: path traced at each Z level (scaled for view)
+function updatePreview(){
+  function disposeObj(o){
+    if(!o) return;
+    scene.remove(o);
+    o.traverse ? o.traverse(ch=>{ if(ch.geometry)ch.geometry.dispose(); if(ch.material)ch.material.dispose(); })
+               : (o.geometry&&o.geometry.dispose());
+  }
+  disposeObj(pathLine);
+  disposeObj(zLines);
+
+  const pts = buildPath();
+  // map machine coords -> view coords (centre on origin)
+  const mapX = x => (x-125);
+  const mapY = y => (y-125);
+
+  // For step mode, stack the path at each Z level to show the structure growing.
+  // For fixed mode, show the true flat toolpath (no fake height).
+  const isStep = (state.zMode==='step' || state.zMode==='steploops');
+  const levels = isStep ? state.zCount+1 : 1;
+  const stepH = isStep ? (state.zStep*0.6) : 0;
+
+  const isLightMode = document.documentElement.classList.contains('light');
+  const pickerEl = document.getElementById('pathColourPicker');
+  const pickedHex = pickerEl ? parseInt(pickerEl.value.replace('#',''), 16) : (isLightMode ? 0x1a1a1a : 0x4dd6c1);
+  const pathColor = pickedHex;
+  const pathOpacity = isLightMode ? 1.0 : 0.9;
+
+  // Visual-only tube thickness (does NOT affect G-code). Read from slider.
+  const thickEl = document.getElementById('previewThickness');
+  const tubeRadius = thickEl ? parseFloat(thickEl.value) : 0.55;
+
+  // Build one merged group of tubes — one tube per level.
+  const group = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({color:pathColor, transparent:true, opacity:pathOpacity});
+
+  for(let lv=0; lv<levels; lv++){
+    const h = lv*stepH;
+    const curve3Pts = pts.map(p => new THREE.Vector3(mapX(p.x), h, mapY(p.y)));
+    // de-duplicate consecutive identical points (TubeGeometry dislikes zero-length segments)
+    const cleaned = curve3Pts.filter((v,i)=> i===0 || v.distanceTo(curve3Pts[i-1])>1e-4);
+    if(cleaned.length < 2) continue;
+    const curve = new THREE.CatmullRomCurve3(cleaned, false, 'catmullrom', 0);
+    const tubularSeg = Math.min(1200, Math.max(cleaned.length*2, 64));
+    const tube = new THREE.TubeGeometry(curve, tubularSeg, tubeRadius, 8, false);
+    group.add(new THREE.Mesh(tube, mat));
+  }
+  pathLine = group;
+  scene.add(pathLine);
+
+  // z-drop connectors (vertical hops) for step mode — also as thin tubes
+  if(state.zMode==='step'){
+    const zgroup = new THREE.Group();
+    const zmat = new THREE.MeshBasicMaterial({color: isLightMode ? 0xa05c00 : 0xe3a857, transparent:true, opacity:0.7});
+    const x0=mapX(pts[0].x), y0=mapY(pts[0].y);
+    for(let lv=0;lv<state.zCount;lv++){
+      const a=new THREE.Vector3(x0, lv*stepH, y0);
+      const b=new THREE.Vector3(x0, (lv+1)*stepH, y0);
+      if(a.distanceTo(b)<1e-4) continue;
+      const c=new THREE.CatmullRomCurve3([a,b]);
+      zgroup.add(new THREE.Mesh(new THREE.TubeGeometry(c, 2, tubeRadius*0.7, 6, false), zmat));
+    }
+    zLines = zgroup;
+    scene.add(zLines);
+  }
+}
+
+// ---------- Stage tag ----------
+function updateStageTag(){
+  let dims='';
+  if(state.shape==='circle')dims='Ø '+state.circleD+' mm';
+  else if(state.shape==='annulus')dims='Ø '+state.annInner+'–'+state.annOuter+' mm';
+  else if(state.shape==='square')dims=state.squareSide+' mm side';
+  else if(state.shape==='polygon')dims=Math.round(state.polySides)+'-gon, Ø '+state.polyD+' mm';
+  else if(state.shape==='spiral')dims='Ø '+state.spiralInner+'–'+state.spiralOuter+', '+state.spiralTurns+' turns';
+  document.getElementById('stageTag').innerHTML =
+    '<b>'+state.shape.toUpperCase()+'</b>  '+dims+'<br>centre X'+state.cx+' Y'+state.cy;
+}
+
+// ---------- Master regenerate ----------
+let lastGcode='';
+let topView = false;
+function toggleView(){
+  topView = !topView;
+  document.getElementById('canvas-host').style.display = topView ? 'none' : '';
+  document.getElementById('svg-overlay').style.display = topView ? 'block' : 'none';
+  document.getElementById('view-toggle').textContent = topView ? '⊙ 3D view' : '⊙ Top view';
+  document.querySelector('.stage-hint').style.display = topView ? 'none' : '';
+  if(topView) drawSVG();
+}
+
+function drawSVG(){
+  const svg = document.getElementById('svg-overlay');
+  const W = svg.clientWidth, H = svg.clientHeight;
+  const pts = buildPath();
+  if(!pts.length) return;
+  const isLight = document.documentElement.classList.contains('light');
+  const bg = isLight ? '#f5f7fa' : '#0e1116';
+  const stroke = isLight ? '#0a5c52' : '#4dd6c1';
+  const grid = isLight ? '#d0d7e2' : '#2a3441';
+
+  // find bounds
+  const xs = pts.map(p=>p.x), ys = pts.map(p=>p.y);
+  const minX=Math.min(...xs), maxX=Math.max(...xs);
+  const minY=Math.min(...ys), maxY=Math.max(...ys);
+  const pad = 40;
+  const scaleX = (W-pad*2)/(maxX-minX||1);
+  const scaleY = (H-pad*2)/(maxY-minY||1);
+  const sc = Math.min(scaleX, scaleY);
+  const offX = pad + ((W-pad*2) - (maxX-minX)*sc)/2;
+  const offY = pad + ((H-pad*2) - (maxY-minY)*sc)/2;
+  const tx = x => offX + (x-minX)*sc;
+  const ty = y => offY + (y-minY)*sc;
+
+  // grid lines
+  let gridLines = '';
+  for(let i=0;i<=10;i++){
+    const gx = tx(minX + (maxX-minX)*i/10);
+    const gy = ty(minY + (maxY-minY)*i/10);
+    gridLines += `<line x1="${gx}" y1="${pad/2}" x2="${gx}" y2="${H-pad/2}" stroke="${grid}" stroke-width="0.5"/>`;
+    gridLines += `<line x1="${pad/2}" y1="${gy}" x2="${W-pad/2}" y2="${gy}" stroke="${grid}" stroke-width="0.5"/>`;
+  }
+
+  // path
+  let d = `M${tx(pts[0].x)},${ty(pts[0].y)}`;
+  for(let i=1;i<pts.length;i++) d += ` L${tx(pts[i].x)},${ty(pts[i].y)}`;
+
+  svg.innerHTML = `
+    <rect width="${W}" height="${H}" fill="${bg}"/>
+    ${gridLines}
+    <path d="${d}" fill="none" stroke="${stroke}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  `;
+}
+
+function regenerate(){
+  const {text, meta} = buildGcode();
+  lastGcode = text;
+  updateReadout(meta);
+  updateGcodeBox(text);
+  updatePreview();
+  updateStageTag();
+  if(topView) drawSVG();
+}
+
+// ---------- Wire up controls ----------
+function bindShapeSeg(id){
+  document.querySelectorAll('#'+id+' button').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      document.querySelectorAll('#shapeSeg button, #shapeSeg2 button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+      state.shape=b.dataset.shape;
+      renderShapeParams();
+      regenerate();
+    });
+  });
+}
+bindShapeSeg('shapeSeg'); bindShapeSeg('shapeSeg2');
+
+['synD','flow','speed','zStart','zStep','zCount','zInterval','zLoopInterval','runMin'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', e=>{
+    state[id]=parseFloat(e.target.value)||0; regenerate();
+  });
+});
+document.getElementById('zMode').addEventListener('change', e=>{
+  state.zMode=e.target.value;
+  const stepMode = (e.target.value==='step' || e.target.value==='steploops');
+  document.getElementById('zStepParams').style.display = stepMode?'block':'none';
+  document.getElementById('runMinField').style.display = stepMode?'none':'block';
+  // toggle time vs rotations interval fields
+  document.getElementById('intervalTimeField').style.display = (e.target.value==='step')?'block':'none';
+  document.getElementById('intervalLoopField').style.display = (e.target.value==='steploops')?'block':'none';
+  regenerate();
+});
+
+// ---------- Filename builder ----------
+const POLY_NAMES = {3:'Triangle',4:'Square',5:'Pentagon',6:'Hexagon',7:'Heptagon',8:'Octagon',9:'Nonagon',10:'Decagon'};
+function buildFilename(){
+  // Shape name + condensed dimensions
+  let name, dim;
+  if(state.shape==='circle'){ name='Circle'; dim=''+state.circleD; }
+  else if(state.shape==='square'){ name='Square'; dim=''+state.squareSide; }
+  else if(state.shape==='annulus'){ name='Annulus'; dim=state.annOuter+'-'+state.annInner; }
+  else if(state.shape==='spiral'){ name='Spiral'; dim=state.spiralOuter+'-'+state.spiralInner+'_'+state.spiralTurns+'turns'; }
+  else if(state.shape==='polygon'){
+    const n=Math.round(state.polySides);
+    name = POLY_NAMES[n] || (n+'-gon');
+    dim = ''+state.polyD;
+  } else { name=state.shape; dim=''; }
+
+  // Working distance + drops
+  const isStepMode = (state.zMode==='step' || state.zMode==='steploops');
+  const endZ = isStepMode ? state.zStart + state.zStep*state.zCount : state.zStart;
+  const wdPart = isStepMode ? 'WD'+state.zStart+'-'+endZ : 'WD'+state.zStart;
+  const dropPart = isStepMode ? '_'+state.zCount+'drops' : '';
+
+  // Order: Shape_dim_speed_WD_drops
+  return name+'_'+dim+'_'+state.speed+'mms_'+wdPart+dropPart+'.gcode';
+}
+
+document.getElementById('dlBtn').addEventListener('click', ()=>{
+  const blob=new Blob([lastGcode],{type:'text/plain'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=buildFilename(); a.click(); URL.revokeObjectURL(url);
+});
+document.getElementById('copyBtn').addEventListener('click', async ()=>{
+  try{ await navigator.clipboard.writeText(lastGcode);
+    const b=document.getElementById('copyBtn'); const t=b.textContent;
+    b.textContent='Copied ✓'; setTimeout(()=>b.textContent=t,1200);
+  }catch(e){}
+});
+
+// ---------- Init ----------
+renderShapeParams();
+document.getElementById('zStepParams').style.display='none';
+initThree();
+regenerate();
+</script>
+</body>
+</html>
